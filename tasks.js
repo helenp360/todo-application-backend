@@ -2,71 +2,94 @@ const express = require("express");
 const serverless = require("serverless-http");
 const cors = require("cors");
 const bodyParser = require("body-parser");
-
+const mysql = require("mysql");
 const app = express();
 
 app.use(cors());
 app.use(bodyParser.json());
 
+const connection = mysql.createConnection({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: "todos",
+});
+
 app.get("/tasks", function(req, res) {
-  
-  const someTasks = [
-    {
-      id: 1,
-      text: "water plants",
-      completed: false
-    },
-    {
-      id: 2,
-      text: "walk dog",
-      completed: true
-    },
-    {
-      id: 3,
-      text: "mop kitchen",
-      completed: false
+  const query = "SELECT * FROM Task;"
+
+  connection.query(query, function(error, data) {
+    if(error) {
+      console.log("Error fetching tasks", error);
+      res.status(500).json({
+        error: error
+      })
+
+    } else {
+      res.status(200).json({
+        tasks: data
+      })
     }
-  ];
-  
-  res.send({
-    someTasks
-  });
+  })
 });
 
 app.post("/tasks", function(req, res) {
-  const text = req.body.text;
-  const date = req.body.date;
+  const query = "INSERT INTO Task (completed, urgency, text, userId) VALUES (?, ?, ?, ?);";
+  const querySelect = "SELECT * FROM Task WHERE taskId = ?";
 
-  res.status(201);
-  res.json({
-    message: `Received a request to add task ${text} with date ${date}`
-  });
+  connection.query(query, [req.body.completed, req.body.urgency, req.body.text, req.body.userId], function(error, data) {
+    
+    if(error) {
+      console.log("Error adding a task", error);
+      res.status(500).json({
+        error: error
+      })
+    } else {
+      connection.query(querySelect, [data.insertId], function(error, data) {
+        if(error) {
+          console.log("Error adding a task", error);
+          res.status(500).json({
+          error: error
+        })
+        } else {
+          res.status(201).json({
+            tasks: data
+          })
+        }
+      })
+    }
+  })
 });
 
 app.delete("/tasks/:taskId", function(req, res) {
-  const taskIdToBeDeleted = req.params.taskId;
-
-  let someResponse = {
-    message: `Received a request to delete task with ID ${taskIdToBeDeleted}`
-  };
-
-  if (taskIdToBeDeleted > 3){
-    res.status(404);
-    someResponse = {
-      message: `Task ${taskIdToBeDeleted} does not exist`
+  const query = "DELETE FROM Task WHERE taskId = ?";
+  
+  connection.query(query, [req.params.taskId], function(error, data) {
+    if(error) {
+      console.log("Error deleting task", error);
+      res.status(500).json({
+        error: error
+      })
+    } else {
+      res.sendStatus(200);
     }
-  }
-
-  res.json(someResponse);
-
+  })
 });
 
 
 app.put("/tasks/:taskId", function(req, res) {
-  const taskIdToBeUpdated = req.params.taskId;
-  res.json({
-    message: `You issues a put request for task with ID ${taskIdToBeUpdated}`
-  });
+  const query = "UPDATE Task SET completed = ?, urgency = ?, text = ? WHERE taskId = ?"
+
+  connection.query(query, [req.body.completed, req.body.urgency, req.body.text, req.params.taskId], function(error, data) {
+    if(error) {
+      console.log("Error editing task", error);
+      res.status(500).json({
+        error: error
+      })
+    } else {
+      res.sendStatus(200);
+    }
+  })
 });
 
 module.exports.handler = serverless(app);
